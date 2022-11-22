@@ -61,11 +61,11 @@ if [[ "${check}" ]]; then
 	scp "${curr}":"${bak}" "${new_host}":"${bak}"
 
 	# Copy hard drive
-	echo "Copying hard drive image from "${curr}" to "${new_host}". "
+	echo "Copying hard drive image(s) from "${curr}" to "${new_host}". "
 	for i in $(ssh "${curr}" " virsh domblklist "${vm}" | grep qcow2 | cut -d' ' -f9 ")
 	do
-		echo "Copying: "
-		echo "${i}"
+		echo -n "Copying: "
+		echo "${curr}" "${i}"
 		imgf="$( echo "${i}" | cut -d/ -f6 )"
 #		if [[ $(ssh "${new_host}" [ ! -e "${imgd}"/"${imgf}" ]) ]]; then
 			#rsync -avz --progress "${curr}":"${i}" "${new_host}":"${imgd}"/"${imgf}"
@@ -73,17 +73,19 @@ if [[ "${check}" ]]; then
 #		fi
 		echo "New image location is: ${imgd}/${imgf}" 
 		ssh ${new_host} sed -i "s#file=\'.*.qcow2\'#file=\'${imgd}/${imgf}\'#" "${bak}"
-		scp "${new_host}":"${bak}" "${bak}"
-		sed -i "s+<cpu mode=.*+<cpu mode='host-passthrough' check='none'>+" "${bak}"
-		brdg=$(ssh "${new_host}" "ifconfig | grep ^br | cut -d':' -f1")
-		sed -i "s+<source bridge=.*+<source bridge='"${brdg}"'/>+" "${bak}"
-		scp "${bak}" "${new_host}":"${bak}"
-		#ssh ${new_host} sed -i \"s+<cpu mode=.*+<cpu mode='host-passthrough' check='none'>+\" "${bak}"
 	done
+	# Fix up CPU and Network references
+	echo "Switching CPU to passthrough mode, and updated Networking bridge references."
+	scp "${new_host}":"${bak}" "${bak}"
+	sed -i "s+<cpu mode=.*+<cpu mode='host-passthrough' check='none'>+" "${bak}"
+	brdg=$(ssh "${new_host}" "ifconfig | grep ^br | cut -d':' -f1")
+	sed -i "s+<source bridge=.*+<source bridge='"${brdg}"'/>+" "${bak}"
+	scp "${bak}" "${new_host}":"${bak}"
+	echo "Finished with CPU and Networking changes."
 
 	# Import and start VM on new host
 	ssh "${new_host}" " virsh define --file "${bak}" && virsh start "${vm}" "
-	echo " "${vm}" should now be active on "${new_host}". "
+	echo " "${vm}" should now be active on "${new_host}". Here is a list of what is active: "
 	ssh "${new_host}" " virsh list "
 else
 	usage
